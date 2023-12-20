@@ -1,0 +1,446 @@
+---
+title: "ML_project_3"
+theme: "sandstone"
+editor: visual
+authors: "Chance Van Dyke, Ben Garcia, Jack O'Grady & Brett Lobsinger"
+date: "2023-12-04"
+format: html
+---
+
+## Prework
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+```{r pressure, echo=FALSE}
+#install.packages("ggplot2")
+#install.packages("rpart")				        # Popular decision tree algorithm
+#install.packages("rattle")					# Fancy tree plot
+#install.packages("rpart.plot")				# Enhanced tree plots
+#install.packages("RColorBrewer")				# Color selection for fancy tree plot
+#install.packages("party")					# Alternative decision tree algorithm
+#install.packages("partykit")				# Convert rpart object to BinaryTree
+#install.packages("caret2")		
+#install.packages("splitstackshape")
+
+library(ggplot2)
+library(rpart)				        # Popular decision tree algorithm
+library(rattle)					# Fancy tree plot
+library(rpart.plot)				# Enhanced tree plots
+library(RColorBrewer)				# Color selection for fancy tree plot
+library(party)					# Alternative decision tree algorithm
+library(partykit)				# Convert rpart object to BinaryTree
+library(caret)	
+library(reshape2) # Load reshape 2 for melting
+library(DMwR) # Load data mining with R for SMOTE
+library(splitstackshape)
+library(randomForest)
+library(caret)
+library(xgboost)
+library(OptimalCutpoints) # Load optimal cutpoints
+library(xgboostExplainer) # Load XGboost Explainer
+library(pROC) # Load proc
+library(SHAPforxgboost) # Load shap for XGBoost
+library(devtools)
+library(glmnet)
+```
+
+### Reading and Separating Data:
+
+```{r cars, echo=FALSE}
+#Ben total_data <- read.csv("~/Desktop/ML FInal Project/loan_approval_dataset 2.csv") # Load loan dataset
+
+# Brett total_data <- read.csv("~/Desktop/Machine Learning/loan_approval_dataset 2.csv") # Load loan dataset
+
+#Chance
+ total_data <- read.csv("~/Desktop/GraduateSchool/S2/Machine/loan_approval_dataset 2.csv")
+
+#Jack total_data <- 
+
+```
+
+```{r, echo=FALSE}
+set.seed(42042069)
+
+total_obs <- dim(total_data)[1]
+
+## Data Partition: Training v.s. Test split
+train_data_indices <- sample(1:total_obs, 0.8*total_obs)
+train_data <- total_data[train_data_indices,]
+test_data <- total_data[-train_data_indices,]
+# Record the size of training data and test data
+train_obs <- dim(train_data)[1]
+
+#summary(total_data)
+
+#summary(as.factor(train_data$loan_status))
+```
+
+### Loan Approval/Rejection Data
+
+### Comparing to a Historical Data Set
+
+When looking at the data source provided on our feedback, Sheikh, Goel & Kumar (2020) looked at 1,500 cases with 18 total categories, 10 numerical and 8 categorical variables, and split 80:20 and 70:30 for two different sets each. Those with comparatively low 'CIBIL' scores will often result in the best predictor of whether a loan will be approved based on previous history of loans defaulting, meaning legal obligations of a loan are not being met. Applicants with a higher amount of income and a smaller amount applied for will often pay back loans, leading to more loans getting approved.
+
+*M. A. Sheikh, A. K. Goel and T. Kumar, "An Approach for Prediction of Loan Approval using Machine Learning Algorithm," 2020 International Conference on Electronics and Sustainable Communication Systems (ICESC), Coimbatore, India, 2020, pp. 490-494, doi: 10.1109/ICESC48915.2020.9155614.*
+
+```{r}
+head(total_data)
+```
+
+### Data Visualizations
+
+```{r}
+plot_dat <- total_data 
+plot_dat$loan_status <-  as.factor(total_data$loan_status)
+#head(plot_dat)
+
+g_1 <- ggplot(plot_dat, aes(x = income_annum, fill = loan_status)) + 
+  geom_density(alpha = 0.55) + 
+    theme_set(theme_bw(base_size = 10) ) + 
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), 
+        panel.border = element_blank(), 
+        panel.background = element_blank()) + 
+  labs(x = "Annual_Income", title = "Annual_Income - LoanApproval",
+       fill = "Loan Status")+ 
+    scale_fill_manual(values = c(" Rejected" = "red", " Approved" = "blue"),
+                    labels = c(" Rejected" = "Rejected", " Approved" = "Approved")) 
+
+g_1 
+```
+
+```{r}
+g2 <- ggplot(plot_dat, aes(x = cibil_score, fill = loan_status)) + 
+ geom_density(alpha = 0.55) + 
+    theme_set(theme_bw(base_size = 10) ) + 
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), 
+        panel.border = element_blank(), 
+        panel.background = element_blank()) + 
+  labs(x = "CreditScore", title = "CreditScore - LoanApproval",
+       fill = "Loan Status")+ 
+  scale_fill_manual(values = c(" Rejected" = "red", " Approved" = "green"),
+                    labels = c(" Rejected" = "Rejected", " Approved" = "Approved")) 
+
+g2 
+```
+
+```{r}
+g3 <- ggplot(plot_dat, aes(x = education, fill = loan_status)) + 
+  geom_bar(alpha = 0.5, position = "dodge") + 
+  theme_set(theme_bw(base_size = 22) ) + 
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), 
+        panel.border = element_blank(), 
+        panel.background = element_blank()) + labs(x = "Graduate Status", title = "Education Level?",
+       fill = "Loan Status") +   scale_fill_manual(values = c(" Rejected" = "red", " Approved" = "green"),
+                    labels = c(" Rejected" = "Rejected", " Approved" = "Approved")) 
+
+
+
+g3
+```
+
+```{r}
+#plot_dat$no_of_dependents <-  as.factor(plot_dat$no_of_dependents)
+g4 <- ggplot(plot_dat, aes(x = no_of_dependents, y = loan_status, fill = loan_status)) +
+    geom_boxplot(alpha = 0.5, position = "dodge") + 
+  theme_set(theme_bw(base_size = 22) ) + 
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), 
+        panel.border = element_blank(), 
+        panel.background = element_blank()) + labs(x = "Number of Dependents", title = "Number of Dependents?",
+       fill = "Loan Status") +   scale_fill_manual(values = c(" Rejected" = "red", " Approved" = "green"),
+                    labels = c(" Rejected" = "Rejected", " Approved" = "Approved")) 
+
+
+g4
+       
+
+```
+
+### Decision Tree Model:
+
+We are now ready to fit a classification tree in order to predict if an individual will be approved or rejected for a loan.
+
+```{r Decision tree 1, echo=FALSE}
+tree_1 <- rpart(loan_status ~., # Set tree formula
+data = total_data) # Set dataset
+par(xpd = NA) # Set this avoid cut-off text
+
+```
+
+```{r Plot tree 1}
+fancyRpartPlot(tree_1) # Plot fancy tree
+```
+
+If we run the \`summary()\` command on the tree this prints out a wealth of information regarding the tree.
+
+```{r Summary tree 1, echo=FALSE}
+# summary(tree_1)
+```
+
+The initial table has some valuable information:
+
+\### Selecting CP
+
+In fitting a basic tree we are most interested in the complexity parameter. To view the complexity parameter table from the summary statistics by itself we can run \`printcp()\`:
+
+```{r Print CP, echo=FALSE}
+# printcp(tree_1) # Print complexity parameter table
+```
+
+A better way to interpret the complexity parameter is to plots its progression and compare different values with the relative error they lead to:
+
+```{r plot cp}
+plotcp(tree_1) # Plot cp
+```
+
+```{r tree set cp}
+tree_2 <- rpart(loan_status ~., # Set tree formula
+data = total_data, # Set data
+control = rpart.control(cp = 0.11)) # Set parameters
+fancyRpartPlot(tree_2) # Plot fancy tree
+```
+
+## Imbalanced Data
+
+```{r, echo=FALSE}
+summary(as.factor(total_data$loan_status))
+```
+
+### Bootstrap resampling
+
+To carry out bootstrap re-sampling we simply generate a random selection of indices from the minority class to use in the model, in effect this randomly duplicates some of the minority class samples:
+
+```{r bootstrap resample, echo=FALSE}
+set.seed(123456) # Set seed for sampling
+# Split data into approved and rejected classes
+total_data$loan_status2 <- factor(total_data$loan_status)
+#summary(total_data$loan_status2)
+total_data$loan_status2 <- as.numeric(total_data$loan_status2)
+
+
+Rejected <- total_data[total_data$loan_status2==2,] # Select minority samples
+Approved <- total_data[total_data$loan_status2 ==1,] # Select majority samples
+#nrow(Rejected) # Rows in Rejected
+#nrow(Approved) # Rows in Approved
+Rejected_boot <- Rejected[sample(1:nrow(Rejected), size = nrow(Approved), replace =TRUE),] # Create bootstrap sample
+#nrow(Rejected_boot) # Check rows of bootstrap sample
+use_dat <- rbind.data.frame(Rejected_boot, Approved) # Join data together
+```
+
+We can now fit a tree on the bootstrapped data:
+
+```{r tree boot}
+total_data = subset(total_data,select = -loan_status2)
+use_dat= subset(use_dat,select = -loan_status2)
+
+tree_3 <- rpart(loan_status ~., # Set tree formula
+data = use_dat) # Set data
+fancyRpartPlot(tree_3) # Plot fancy tree
+```
+
+### Prediction prelim
+
+To test how our model will perform on new data we can split the data into training and test sets. We will use the data which is already split into help and no help to ensure we have an equal proportion of samples in each class for both our training and test sets. We will use 20% of the data for testing. To do this we can use the stratified function which will create a stratified sample for our dataset.
+
+```{r train test, echo=FALSE}
+ set.seed(123456) # Set seed
+
+total_data$loan_status <- as.factor(total_data$loan_status)
+total_data$education <- as.factor(total_data$education)
+total_data$self_employed <- as.factor(total_data$self_employed)
+
+# Perform stratified sampling
+ split_dat <- stratified(total_data, # Set dataset
+                         group = "loan_status", # Set variables to use for stratification
+                         size = 0.2,  # Set size of test set
+                         bothSets = TRUE ) # Return both training and test sets
+ # Extract train data
+ train_dat <- split_dat[[2]]
+ # Extract test data
+ test_dat <- split_dat[[1]]
+
+# Check size
+nrow(train_dat)
+nrow(test_dat)
+```
+
+So we have 3415 training samples and 854 test samples. We can now build a tree on the training data:
+
+```{r build train tree}
+tree_5 <- rpart(loan_status ~., # Set tree formula
+data = train_dat) # Set data
+fancyRpartPlot(tree_5) # Plot fancy tree
+```
+
+We can then predict the class of the test samples:
+
+```{r Predict new, echo=FALSE}
+preds <- predict(tree_5, test_dat) # Predict test samples
+```
+
+We can the visualize the results of our prediction by class:
+
+```{r plot predictions, echo=FALSE}
+# Join predictions (second column is prob of sought help) and test response
+plot_dat <- cbind.data.frame(preds[,2], test_dat$loan_status)
+names(plot_dat) <- c("probability", "response")
+g_3 <- ggplot(plot_dat, aes(y = probability, x = response, fill = response)) +
+geom_boxplot() +
+theme_bw() +
+theme(panel.grid.major = element_blank(), # Turn of the background grid
+panel.grid.minor = element_blank(),
+panel.border = element_blank(),
+panel.background = element_blank()) +
+labs(y = "Probability",  # Set plot labels
+fill = "Approved",
+title = "Predicted Probabilities v Approved") +
+scale_fill_manual(values = c("Rejected" = "red", "Approved" = "blue"),) # Manually set fill values
+#g_3
+
+
+g_4 <- ggplot(plot_dat, aes(x = probability, fill = response)) +
+geom_density(alpha = 0.3) +
+theme_bw() +
+theme(panel.grid.major = element_blank(), # Turn of the background grid
+panel.grid.minor = element_blank(),
+panel.border = element_blank(),
+panel.background = element_blank()) +
+labs(x = "Probability",  # Set plot labels
+fill = "Approved",
+title = "Predicted Probabilities v Approved") +
+scale_fill_manual(values = c("Rejected" = "red", "Approved" = "blue"),) # Manually set fill values
+#g_4
+
+```
+
+Lets use a cut-off of 0.6 and see what the results would look like in a confusion matrix:
+
+```{r confusion matrix, echo=FALSE}
+preds_char <- rep("Rejected", nrow(plot_dat)) # Create vector for predictions with deafult value
+preds_char[which(plot_dat$probability >= 0.6)] <- "Approved" # Select sought help predictions
+# confusionMatrix(table(preds_char, as.factor(plot_dat$response))) # Create confusion matrix
+```
+
+Lets see if using smote on the training data can help improve our accuracy;
+
+```{r smote preds, echo=FALSE}
+# Run smote
+smote_dat_2 <- SMOTE(loan_status ~ ., # Set prediction formula
+train_dat, # Set dataset
+perc.over = 100) # Select oversampling for minority class
+# Build tree
+tree_6 <- rpart(loan_status ~., # Set tree formula
+data = smote_dat_2) # Set data
+# Predict test data
+preds <- predict(tree_6, test_dat)
+# Extract probabilities and produce table
+plot_dat <- cbind.data.frame(preds[,2], test_dat$loan_status)
+names(plot_dat) <- c("probability", "response")
+preds_char <- rep("Rejected", nrow(plot_dat)) # Create vector for predictions with deafult value
+preds_char[which(plot_dat$probability >= 0.6)] <- "Approved" # Select sought help predictions
+# confusionMatrix(table(preds_char, as.factor(plot_dat$response))) # Create confusion matrix}
+```
+
+Not much of an increase, lets try combining smote and modifying the parameter values. First we can build a maximal tree and look at the cp:
+
+```{r smote cp}
+# Set seed
+set.seed(999999)
+# Build tree
+tree_7 <- rpart(loan_status ~., # Set tree formula
+data = smote_dat_2, # Set data
+control = rpart.control(cp = 0)) # Select cp 
+# Plot CP
+plotcp(tree_7)
+# Print CP
+#printcp(tree_7)
+```
+
+The cp appears to be minimized to about 0.081. Instead of returning probabilities from the prediction we can set \`type="class"\` in the predict function to get the function to return a class prediction.
+
+```{r tune smote}
+
+# Build tree
+tree_8 <- rpart(loan_status ~., # Set tree formula
+data = smote_dat_2, # Set data
+control = rpart.control(cp = 0.081)) # Select cp
+
+# Predict test data
+preds <- predict(tree_8, test_dat, type = "class")
+
+confusionMatrix(table(preds,  test_dat$loan_status)) # Create confusion matrix
+fancyRpartPlot(tree_8)
+```
+
+### Logistic Regression:
+
+```{r, echo=FALSE}
+total_data$loan_status <- abs(as.numeric(as.factor(total_data$loan_status)) - 2)
+```
+
+```{r}
+# Building a logistic regression model to predict loan status with all of the other variables as predictors
+
+fit_1 <- glm(loan_status ~ .,
+             family=binomial(link='logit'), 
+             data= total_data)
+summary(fit_1)
+```
+
+### Logistic Lasso Model:
+
+```{r, echo=FALSE}
+# Converting the remaining categorical variables to numeric and scaling the variables 
+
+total_data$education <- abs(as.numeric(as.factor(total_data$education)) - 2)
+total_data$self_employed <- as.numeric(as.factor(total_data$self_employed)) - 1
+
+x_data <- as.data.frame(scale(total_data[,-13])) 
+x_data$loan_status <- total_data$loan_status 
+x_vars <- model.matrix(loan_status ~., 
+                       x_data)[,-1]
+```
+
+```{r, echo=FALSE}
+# Determining the best lambda for a logistic lasso model
+
+set.seed(123)
+
+lambda_seq <- 10^seq(4, -4, by = -.1)
+
+cv.lasso <- cv.glmnet(x = x_vars, 
+                 y = total_data$loan_status, 
+                 alpha = 1, 
+                 family = "binomial", 
+                 lambda = lambda_seq,
+                 nfolds = 10)
+best_lam <- cv.lasso$lambda.1se 
+best_lam
+```
+
+```{r}
+# Building the logistic lasso model with the best lambda
+
+lasso_fit <- glmnet(x = x_vars,
+                    y = total_data$loan_status, 
+                    alpha = 1,
+                    family = "binomial",
+                    lambda = best_lam)
+
+coef(lasso_fit)
+```
+
+```{r}
+# Comparing the logistic model to the logistic lasso model
+
+comparison <- cbind.data.frame(coef(fit_1), as.vector(coef(lasso_fit)))
+names(comparison) <- c("Logistic Regression", "Logistic Lasso") 
+rownames(comparison) <- names(coef(fit_1))
+comparison
+```
